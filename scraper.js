@@ -13,6 +13,7 @@ const cheerio = require("cheerio");
 const parse = require("csv-parse/lib/sync");
 const request = require("request-promise-native");
 const sqlite3 = require("sqlite3");
+const moment = require("moment");
 sqlite3.verbose();
 const DevelopmentApplicationsUrl = "https://data.sa.gov.au/data/dataset/development-application-register";
 const CommentUrl = "mailto:Playford@playford.sa.gov.au";
@@ -56,6 +57,10 @@ async function insertRow(database, developmentApplication) {
         });
     });
 }
+// Gets a random integer in the specified range: [minimum, maximum).
+function getRandom(minimum, maximum) {
+    return Math.floor(Math.random() * (Math.floor(maximum) - Math.ceil(minimum))) + Math.ceil(minimum);
+}
 // Parses the development applications.
 async function main() {
     // Ensure that the database exists.
@@ -64,50 +69,73 @@ async function main() {
     console.log(`Retrieving page: ${DevelopmentApplicationsUrl}`);
     let body = await request({ url: DevelopmentApplicationsUrl });
     let $ = cheerio.load(body);
-    for (let element of $("a.resource-url-analytics").get()) {
-        console.log(`Retrieving: ${element.attribs.href}`);
-        let body = await request({ url: element.attribs.href });
-        let rows = parse(body);
-        console.log(rows);
+    // Find all CSV URLs on the main page.
+    let urls = [];
+    for (let element of $("a.resource-url-analytics").get())
+        if (!urls.some(url => url === element.attribs.href))
+            urls.push(element.attribs.href);
+    if (urls.length === 0) {
+        console.log(`No CSV files to parse were found on the page: ${DevelopmentApplicationsUrl}`);
+        return;
     }
-    // Retrieve the results of a search for the last month.
-    // let dateFrom = encodeURIComponent(moment().subtract(1, "months").format("DD/MM/YYYY"));
-    // let dateTo = encodeURIComponent(moment().format("DD/MM/YYYY"));
-    // let developmentApplicationSearchUrl = DevelopmentApplicationSearchUrl.replace(/\{0\}/g, dateFrom).replace(/\{1\}/g, dateTo);
-    // console.log(`Retrieving search results for: ${developmentApplicationSearchUrl}`);
-    // let body = await request({ url: developmentApplicationSearchUrl, jar: jar, rejectUnauthorized: false });  // the cookie jar contains the JSESSIONID_live cookie
-    // let $ = cheerio.load(body);
-    // // Parse the search results.
-    // for (let headerElement of $("h4.non_table_headers").get()) {
-    //     let address: string = $(headerElement).text().trim().replace(/\s\s+/g, " ");  // reduce multiple consecutive spaces in the address to a single space
-    //     let applicationNumber = "";
-    //     let reason = "";
-    //     let receivedDate = moment.invalid();
-    //     for (let divElement of $(headerElement).next("div").get()) {
-    //         for (let paragraphElement of $(divElement).find("p.rowDataOnly").get()) {
-    //             let key: string = $(paragraphElement).children("span.key").text().trim();
-    //             let value: string = $(paragraphElement).children("span.inputField").text().trim();
-    //             if (key === "Type of Work")
-    //                 reason = value;
-    //             else if (key === "Application No.")
-    //                 applicationNumber = value;
-    //             else if (key === "Date Lodged")
-    //                 receivedDate = moment(value, "D/MM/YYYY", true);  // allows the leading zero of the day to be omitted
-    //         }
-    //     }
-    //     // Ensure that at least an application number and address have been obtained.
-    //     if (applicationNumber !== "" && address !== "") {
-    //         await insertRow(database, {
-    //             applicationNumber: applicationNumber,
-    //             address: address,
-    //             reason: reason,
-    //             informationUrl: DevelopmentApplicationMainUrl,
-    //             commentUrl: CommentUrl,
-    //             scrapeDate: moment().format("YYYY-MM-DD"),
-    //             receivedDate: receivedDate.isValid ? receivedDate.format("YYYY-MM-DD") : ""
-    //         });
-    //     }
-    // }
+    // Retrieve two of the development application CSV files (the most recent and one other random
+    // selection).  Retrieving all development application CSV files may otherwise use too much
+    // memory and result in morph.io terminating the current process.
+    let selectedUrls = [urls.pop()];
+    if (urls.length >= 1)
+        selectedUrls.push(urls[getRandom(0, urls.length)]);
+    for (let url of selectedUrls) {
+        console.log(`Retrieving: ${url}`);
+        let body = await request({ url: url });
+        let rows = parse(body);
+        if (rows.length === 0)
+            continue;
+        // Determine which columns contain the required development application information.
+        let applicationNumberColumnIndex = -1;
+        let receivedDateColumnIndex = -1;
+        let reasonColumnIndex = -1;
+        let addressColumnIndex1 = -1;
+        let addressColumnIndex2 = -1;
+        for (let columnIndex = 0; columnIndex < rows[0].length; columnIndex++) {
+            let cell = rows[0][columnIndex];
+            if (cell === "ApplicationNumber")
+                applicationNumberColumnIndex = columnIndex;
+            else if (cell === "LodgementDate")
+                receivedDateColumnIndex = columnIndex;
+            else if (cell === "ApplicationDesc")
+                reasonColumnIndex = columnIndex;
+            else if (cell === "PropertyAddress")
+                addressColumnIndex1 = columnIndex;
+            else if (cell === "PropertySuburbPostCode")
+                addressColumnIndex2 = columnIndex;
+        }
+        if (applicationNumberColumnIndex < 0 || (addressColumnIndex1 < 0 && addressColumnIndex2 < 0)) {
+            console.log(`Could not parse any development applications from ${url}.`);
+            continue;
+        }
+        // Extract the development application information.
+        let developmentApplications = [];
+        for (let rowIndex = 1; rowIndex < rows.length; rowIndex++) {
+            let row = rows[rowIndex];
+            let applicationNumber = row[applicationNumberColumnIndex].trim();
+            let address1 = (addressColumnIndex1 < 0) ? "" : row[addressColumnIndex1].trim();
+            let address2 = (addressColumnIndex2 < 0) ? "" : row[addressColumnIndex2].trim();
+            let reason = (reasonColumnIndex < 0) ? "" : row[reasonColumnIndex].trim();
+            let receivedDate = moment(((receivedDateColumnIndex < 0) ? null : row[receivedDateColumnIndex].trim()), "D/MM/YYYY HH:mm:ss A", true); // allows the leading zero of the day to be omitted
+            let address = address1 + ((address1 !== "" && address2 !== "") ? " " : "") + address2;
+            address = address.trim().replace(/\s\s+/g, " "); // reduce multiple consecutive spaces in the address to a single space
+            if (applicationNumber !== "" && address !== "")
+                await insertRow(database, {
+                    applicationNumber: applicationNumber,
+                    address: address,
+                    reason: reason,
+                    informationUrl: url,
+                    commentUrl: CommentUrl,
+                    scrapeDate: moment().format("YYYY-MM-DD"),
+                    receivedDate: receivedDate.isValid() ? receivedDate.format("YYYY-MM-DD") : ""
+                });
+        }
+    }
 }
 main().then(() => console.log("Complete.")).catch(error => console.error(error));
 //# sourceMappingURL=scraper.js.map
