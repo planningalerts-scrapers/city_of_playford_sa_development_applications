@@ -7,16 +7,22 @@
 //
 // Michael Bone
 // 5th August 2018
+
 "use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-const cheerio = require("cheerio");
-const parse = require("csv-parse/lib/sync");
-const request = require("request-promise-native");
-const sqlite3 = require("sqlite3");
+
+import * as cheerio from "cheerio";
+import * as parse from "csv-parse/lib/sync";
+import * as request from "request-promise-native";
+import * as sqlite3 from "sqlite3";
+import * as moment from "moment";
+
 sqlite3.verbose();
+
 const DevelopmentApplicationsUrl = "https://data.sa.gov.au/data/dataset/development-application-register";
 const CommentUrl = "mailto:Playford@playford.sa.gov.au";
+
 // Sets up an sqlite database.
+
 async function initializeDatabase() {
     return new Promise((resolve, reject) => {
         let database = new sqlite3.Database("data.sqlite");
@@ -26,7 +32,9 @@ async function initializeDatabase() {
         });
     });
 }
+
 // Inserts a row in the database if it does not already exist.
+
 async function insertRow(database, developmentApplication) {
     return new Promise((resolve, reject) => {
         let sqlStatement = database.prepare("insert or ignore into [data] values (?, ?, ?, ?, ?, ?, ?, ?, ?)");
@@ -40,49 +48,59 @@ async function insertRow(database, developmentApplication) {
             developmentApplication.receivedDate,
             null,
             null
-        ], function (error, row) {
+        ], function(error, row) {
             if (error) {
                 console.error(error);
                 reject(error);
-            }
-            else {
+            } else {
                 if (this.changes > 0)
                     console.log(`    Inserted: application \"${developmentApplication.applicationNumber}\" with address \"${developmentApplication.address}\" and reason \"${developmentApplication.reason}\" into the database.`);
                 else
                     console.log(`    Skipped: application \"${developmentApplication.applicationNumber}\" with address \"${developmentApplication.address}\" and reason \"${developmentApplication.reason}\" because it was already present in the database.`);
-                sqlStatement.finalize(); // releases any locks
+                sqlStatement.finalize();  // releases any locks
                 resolve(row);
             }
         });
     });
 }
+
 // Parses the development applications.
+
 async function main() {
     // Ensure that the database exists.
+
     let database = await initializeDatabase();
+
     // Retrieve the main page.
+
     console.log(`Retrieving page: ${DevelopmentApplicationsUrl}`);
     let body = await request({ url: DevelopmentApplicationsUrl });
     let $ = cheerio.load(body);
+
     for (let element of $("a.resource-url-analytics").get()) {
         console.log(`Retrieving: ${element.attribs.href}`);
         let body = await request({ url: element.attribs.href });
         let rows = parse(body);
         console.log(rows);
     }
+
     // Retrieve the results of a search for the last month.
+
     // let dateFrom = encodeURIComponent(moment().subtract(1, "months").format("DD/MM/YYYY"));
     // let dateTo = encodeURIComponent(moment().format("DD/MM/YYYY"));
     // let developmentApplicationSearchUrl = DevelopmentApplicationSearchUrl.replace(/\{0\}/g, dateFrom).replace(/\{1\}/g, dateTo);
     // console.log(`Retrieving search results for: ${developmentApplicationSearchUrl}`);
     // let body = await request({ url: developmentApplicationSearchUrl, jar: jar, rejectUnauthorized: false });  // the cookie jar contains the JSESSIONID_live cookie
     // let $ = cheerio.load(body);
+
     // // Parse the search results.
+
     // for (let headerElement of $("h4.non_table_headers").get()) {
     //     let address: string = $(headerElement).text().trim().replace(/\s\s+/g, " ");  // reduce multiple consecutive spaces in the address to a single space
     //     let applicationNumber = "";
     //     let reason = "";
     //     let receivedDate = moment.invalid();
+
     //     for (let divElement of $(headerElement).next("div").get()) {
     //         for (let paragraphElement of $(divElement).find("p.rowDataOnly").get()) {
     //             let key: string = $(paragraphElement).children("span.key").text().trim();
@@ -95,7 +113,9 @@ async function main() {
     //                 receivedDate = moment(value, "D/MM/YYYY", true);  // allows the leading zero of the day to be omitted
     //         }
     //     }
+
     //     // Ensure that at least an application number and address have been obtained.
+
     //     if (applicationNumber !== "" && address !== "") {
     //         await insertRow(database, {
     //             applicationNumber: applicationNumber,
@@ -109,5 +129,5 @@ async function main() {
     //     }
     // }
 }
+
 main().then(() => console.log("Complete.")).catch(error => console.error(error));
-//# sourceMappingURL=scraper.js.map
