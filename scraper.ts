@@ -1,10 +1,6 @@
 // Parses the development applications at the South Australian City of Playford web site and places
 // them in a database.
 //
-// In each VSCode session: to automatically compile this TypeScript script into JavaScript whenever
-// the TypeScript is changed and saved, press Ctrl+Shift+B and select "tsc:watch - tsconfig.json".
-// This starts a task that watches for changes to the TypeScript script.
-//
 // Michael Bone
 // 5th August 2018
 
@@ -154,7 +150,7 @@ async function main() {
                 await insertRow(database, {
                     applicationNumber: applicationNumber,
                     address: address,
-                    reason: reason,
+                    reason: ((reason === "") ? "No description provided" : reason),
                     informationUrl: url,
                     commentUrl: CommentUrl,
                     scrapeDate: moment().format("YYYY-MM-DD"),
