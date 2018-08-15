@@ -135,7 +135,6 @@ async function main() {
 
         // Extract the development application information.
 
-        let developmentApplications = [];
         for (let rowIndex = 1; rowIndex < rows.length; rowIndex++) {
             let row = rows[rowIndex];
             let applicationNumber = row[applicationNumberColumnIndex].trim();
