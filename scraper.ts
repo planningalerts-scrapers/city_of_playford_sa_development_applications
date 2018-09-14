@@ -33,11 +33,11 @@ async function initializeDatabase() {
 
 async function insertRow(database, developmentApplication) {
     return new Promise((resolve, reject) => {
-        let sqlStatement = database.prepare("insert or replace into [data] values (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        let sqlStatement = database.prepare("insert or ignore into [data] values (?, ?, ?, ?, ?, ?, ?, ?, ?)");
         sqlStatement.run([
             developmentApplication.applicationNumber,
             developmentApplication.address,
-            developmentApplication.reason,
+            developmentApplication.description,
             developmentApplication.informationUrl,
             developmentApplication.commentUrl,
             developmentApplication.scrapeDate,
@@ -50,9 +50,9 @@ async function insertRow(database, developmentApplication) {
                 reject(error);
             } else {
                 if (this.changes > 0)
-                    console.log(`    Inserted: application \"${developmentApplication.applicationNumber}\" with address \"${developmentApplication.address}\" and reason \"${developmentApplication.reason}\" into the database.`);
+                    console.log(`    Inserted: application \"${developmentApplication.applicationNumber}\" with address \"${developmentApplication.address}\" and description \"${developmentApplication.description}\" into the database.`);
                 else
-                    console.log(`    Skipped: application \"${developmentApplication.applicationNumber}\" with address \"${developmentApplication.address}\" and reason \"${developmentApplication.reason}\" because it was already present in the database.`);
+                    console.log(`    Skipped: application \"${developmentApplication.applicationNumber}\" with address \"${developmentApplication.address}\" and description \"${developmentApplication.description}\" because it was already present in the database.`);
                 sqlStatement.finalize();  // releases any locks
                 resolve(row);
             }
@@ -110,7 +110,7 @@ async function main() {
 
         let applicationNumberColumnIndex = -1;
         let receivedDateColumnIndex = -1;
-        let reasonColumnIndex = -1;
+        let descriptionColumnIndex = -1;
         let addressColumnIndex1 = -1;
         let addressColumnIndex2 = -1;
 
@@ -121,7 +121,7 @@ async function main() {
             else if (cell === "LodgementDate")
                 receivedDateColumnIndex = columnIndex;
             else if (cell === "ApplicationDesc")
-                reasonColumnIndex = columnIndex;
+                descriptionColumnIndex = columnIndex;
             else if (cell === "PropertyAddress")
                 addressColumnIndex1 = columnIndex;
             else if (cell === "PropertySuburbPostCode")
@@ -140,7 +140,7 @@ async function main() {
             let applicationNumber = row[applicationNumberColumnIndex].trim();
             let address1 = (addressColumnIndex1 < 0) ? "" : row[addressColumnIndex1].trim();
             let address2 = (addressColumnIndex2 < 0) ? "" : row[addressColumnIndex2].trim();
-            let reason = (reasonColumnIndex < 0) ? "" : row[reasonColumnIndex].trim();
+            let description = (descriptionColumnIndex < 0) ? "" : row[descriptionColumnIndex].trim();
             let receivedDate = moment(((receivedDateColumnIndex < 0) ? null : row[receivedDateColumnIndex].trim()), "D/MM/YYYY HH:mm:ss A", true);  // allows the leading zero of the day to be omitted
             let address = address1 + ((address1 !== "" && address2 !== "") ? " " : "") + address2;
             address = address.trim().replace(/\s\s+/g, " ");  // reduce multiple consecutive spaces in the address to a single space
@@ -149,7 +149,7 @@ async function main() {
                 await insertRow(database, {
                     applicationNumber: applicationNumber,
                     address: address,
-                    reason: ((reason === "") ? "No description provided" : reason),
+                    description: ((description === "") ? "No description provided" : description),
                     informationUrl: url,
                     commentUrl: CommentUrl,
                     scrapeDate: moment().format("YYYY-MM-DD"),
