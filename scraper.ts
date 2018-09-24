@@ -135,6 +135,7 @@ async function main() {
 
         // Extract the development application information.
 
+        console.log("Inserting parsed applications into the database.");
         for (let rowIndex = 1; rowIndex < rows.length; rowIndex++) {
             let row = rows[rowIndex];
             let applicationNumber = row[applicationNumberColumnIndex].trim();
@@ -142,7 +143,7 @@ async function main() {
             let address2 = (addressColumnIndex2 < 0) ? "" : row[addressColumnIndex2].trim();
             let description = (descriptionColumnIndex < 0) ? "" : row[descriptionColumnIndex].trim();
             let receivedDate = moment(((receivedDateColumnIndex < 0) ? null : row[receivedDateColumnIndex].trim()), "D/MM/YYYY HH:mm:ss A", true);  // allows the leading zero of the day to be omitted
-            let address = address1 + ((address1 !== "" && address2 !== "") ? " " : "") + address2;
+            let address = address1 + ((address1 !== "" && address2 !== "") ? ", " : "") + address2;
             address = address.trim().replace(/\s\s+/g, " ");  // reduce multiple consecutive spaces in the address to a single space
 
             if (applicationNumber !== "" && address !== "")
